@@ -3,6 +3,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from app.bigram_model import BigramModel
 from app.embedding_model import calculate_embedding, calculate_similarity
+from fastapi import UploadFile, File
+from app.classifier_model import CNNClassifier
 
 app = FastAPI()
 
@@ -46,3 +48,17 @@ def get_embedding(request: EmbeddingRequest):
 def get_similarity(request: SimilarityRequest):
     similarity = calculate_similarity(request.word1, request.word2)
     return {"word1": request.word1, "word2": request.word2, "similarity": float(similarity)}
+
+
+
+# Assignment 2: CIFAR-10 image classifier
+classifier = None
+
+
+@app.post("/classify")
+async def classify_image(file: UploadFile = File(...)):
+    global classifier
+    if classifier is None:
+        classifier = CNNClassifier()
+    image_bytes = await file.read()
+    return classifier.predict(image_bytes)

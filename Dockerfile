@@ -17,7 +17,7 @@ ENV PATH="/root/.local/bin/:$PATH"
 WORKDIR /code
 
 # Copy the pyproject.toml and uv.lock files
-COPY pyproject.toml uv.lock /code/
+COPY pyproject.toml uv.lock .python-version /code/
 
 # Install dependencies using uv
 RUN uv sync --frozen
@@ -25,6 +25,8 @@ RUN uv sync --frozen
 # Copy the application code
 COPY ./app /code/app
 COPY main.py /code/
+COPY ./helper_lib /code/helper_lib
+COPY ./models /code/models
 
 # Command to run the application
 CMD ["uv", "run", "fastapi", "run", "main.py", "--port", "80"]
