@@ -5,6 +5,8 @@ from app.bigram_model import BigramModel
 from app.embedding_model import calculate_embedding, calculate_similarity
 from fastapi import UploadFile, File
 from app.classifier_model import CNNClassifier
+from fastapi import Response, Query
+from app.gan_model import DigitGenerator
 
 app = FastAPI()
 
@@ -62,3 +64,16 @@ async def classify_image(file: UploadFile = File(...)):
         classifier = CNNClassifier()
     image_bytes = await file.read()
     return classifier.predict(image_bytes)
+
+
+# Assignment 3: GAN handwritten digit generator (MNIST)
+digit_generator = None
+
+
+@app.get("/generate_digits")
+def generate_digits(num_samples: int = Query(16, ge=1, le=64), seed: Union[int, None] = None):
+    global digit_generator
+    if digit_generator is None:
+        digit_generator = DigitGenerator()
+    png_bytes = digit_generator.generate(num_samples, seed)
+    return Response(content=png_bytes, media_type="image/png")

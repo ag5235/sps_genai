@@ -91,6 +91,64 @@ class AssignmentCNN(nn.Module):
         return x
 
 
+# Assignment 3: GAN for MNIST (architecture from the assignment)
+class Generator(nn.Module):
+    def __init__(self, z_dim=100):
+        super(Generator, self).__init__()
+        self.z_dim = z_dim
+        # Noise vector (100) -> 7 x 7 x 128
+        self.fc = nn.Linear(z_dim, 7 * 7 * 128)
+        # 7x7x128 -> 14x14x64
+        self.deconv1 = nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.act1 = nn.ReLU()
+        # 14x14x64 -> 28x28x1
+        self.deconv2 = nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1)
+        self.tanh = nn.Tanh()
+
+    def forward(self, z):
+        x = self.fc(z)
+        x = x.view(-1, 128, 7, 7)  # Reshape
+        x = self.act1(self.bn1(self.deconv1(x)))
+        x = self.tanh(self.deconv2(x))
+        return x
+
+
+class Discriminator(nn.Module):
+    def __init__(self):
+        super(Discriminator, self).__init__()
+        # 28x28x1 -> 14x14x64
+        self.conv1 = nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1)
+        self.act1 = nn.LeakyReLU(0.2)
+        # 14x14x64 -> 7x7x128
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm2d(128)
+        self.act2 = nn.LeakyReLU(0.2)
+        # 7x7x128 -> single real/fake probability
+        self.flatten = nn.Flatten()
+        self.fc = nn.Linear(128 * 7 * 7, 1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.act1(self.conv1(x))
+        x = self.act2(self.bn2(self.conv2(x)))
+        x = self.flatten(x)
+        x = self.sigmoid(self.fc(x))
+        return x
+
+
+class GAN(nn.Module):
+    # Holds both networks so get_model("GAN") returns one object
+    def __init__(self, z_dim=100):
+        super(GAN, self).__init__()
+        self.z_dim = z_dim
+        self.generator = Generator(z_dim)
+        self.discriminator = Discriminator()
+
+    def forward(self, z):
+        return self.generator(z)
+
+
 def get_model(model_name):
     if model_name == "FCNN":
         model = MLP()
@@ -100,6 +158,8 @@ def get_model(model_name):
         model = EnhancedCNN()
     elif model_name == "AssignmentCNN":
         model = AssignmentCNN()
+    elif model_name == "GAN":
+        model = GAN()
     else:
         raise ValueError(f"Unknown model name: {model_name}")
     return model

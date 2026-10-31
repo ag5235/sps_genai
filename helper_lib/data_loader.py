@@ -43,3 +43,13 @@ def get_train_val_loaders(data_dir, batch_size=32, image_size=None, val_size=500
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
     return train_loader, val_loader
+
+def get_mnist_loader(data_dir, batch_size=128, train=True):
+    # Normalize pixels to [-1, 1] to match the generator's Tanh output
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,)),
+    ])
+    dataset = datasets.MNIST(root=data_dir, train=train, download=True, transform=transform)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=train)
+    return loader
