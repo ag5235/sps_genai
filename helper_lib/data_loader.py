@@ -53,3 +53,17 @@ def get_mnist_loader(data_dir, batch_size=128, train=True):
     dataset = datasets.MNIST(root=data_dir, train=train, download=True, transform=transform)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=train)
     return loader
+
+
+def get_cifar10_loader(data_dir, batch_size=128, train=True, normalize=False):
+    # CIFAR-10 at its original 32x32 size
+    # normalize=True  -> pixels in [-1, 1] (energy model, as in Module 8 Practical 1)
+    # normalize=False -> pixels in [0, 1]  (diffusion model normalizes them itself, as in Practical 2)
+    transform_steps = [transforms.ToTensor()]
+    if normalize:
+        transform_steps.append(transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
+    transform = transforms.Compose(transform_steps)
+
+    dataset = datasets.CIFAR10(root=data_dir, train=train, download=True, transform=transform)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=train)
+    return loader

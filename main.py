@@ -7,6 +7,7 @@ from fastapi import UploadFile, File
 from app.classifier_model import CNNClassifier
 from fastapi import Response, Query
 from app.gan_model import DigitGenerator
+from app.image_generators import DiffusionImageGenerator, EnergyImageGenerator
 
 app = FastAPI()
 
@@ -76,4 +77,31 @@ def generate_digits(num_samples: int = Query(16, ge=1, le=64), seed: Union[int, 
     if digit_generator is None:
         digit_generator = DigitGenerator()
     png_bytes = digit_generator.generate(num_samples, seed)
+    return Response(content=png_bytes, media_type="image/png")
+
+
+# Assignment 4: Diffusion and Energy-Based image generators (CIFAR-10)
+diffusion_generator = None
+ebm_generator = None
+
+
+@app.get("/generate_diffusion")
+def generate_diffusion(num_samples: int = Query(8, ge=1, le=32),
+                       diffusion_steps: int = Query(50, ge=1, le=200),
+                       seed: Union[int, None] = None):
+    global diffusion_generator
+    if diffusion_generator is None:
+        diffusion_generator = DiffusionImageGenerator()
+    png_bytes = diffusion_generator.generate(num_samples, diffusion_steps, seed)
+    return Response(content=png_bytes, media_type="image/png")
+
+
+@app.get("/generate_ebm")
+def generate_ebm(num_samples: int = Query(8, ge=1, le=32),
+                 langevin_steps: int = Query(256, ge=1, le=1000),
+                 seed: Union[int, None] = None):
+    global ebm_generator
+    if ebm_generator is None:
+        ebm_generator = EnergyImageGenerator()
+    png_bytes = ebm_generator.generate(num_samples, steps=langevin_steps, seed=seed)
     return Response(content=png_bytes, media_type="image/png")

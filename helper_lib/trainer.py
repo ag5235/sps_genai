@@ -94,3 +94,114 @@ def train_gan(model, data_loader, criterion, optimizer, device='cpu', epochs=10)
 
     print("Finished Training")
     return model
+
+
+
+
+# ---------------------------------------------------------------
+# Assignment 4: Diffusion and Energy-Based model training (Module 8)
+# ---------------------------------------------------------------
+import os
+import random
+import numpy as np
+from .generator import langevin_sampling
+
+
+def train_diffusion(model, data_loader, criterion, optimizer, device='cpu', epochs=10, val_loader=None, checkpoint_dir='checkpoints'):
+    # Training loop from Module 8 Practical 2 (train_diffusion)
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    model = model.to(device)
+
+    for epoch in range(epochs):
+        model.train()
+        train_losses = []
+        loader_with_progress = tqdm(data_loader, ncols=120, desc=f'Epoch {epoch+1}/{epochs} [Train]')
+        for images, _ in loader_with_progress:
+            images = images.to(device)
+            loss = model.train_step(images, optimizer, criterion)
+            train_losses.append(loss)
+            loader_with_progress.set_postfix(loss=f'{loss:.4f}')
+        avg_train_loss = sum(train_losses) / len(train_losses)
+
+        # Validation loss with the EMA network
+        message = f"Epoch {epoch+1}: Train Loss={avg_train_loss:.4f}"
+        if val_loader is not None:
+            model.eval()
+            val_losses = [model.test_step(images.to(device), criterion) for images, _ in val_loader]
+            message += f" | Val Loss={sum(val_losses) / len(val_losses):.4f}"
+        print(message)
+
+        # Save a checkpoint every epoch
+        torch.save(model.state_dict(), os.path.join(checkpoint_dir, f'diffusion_epoch_{epoch+1:03d}.pth'))
+
+    print("Finished Training")
+    return model
+
+
+class Buffer:
+    # Replay buffer of fake images from Module 8 Practical 1
+    def __init__(self, model, device, num_channels=3, image_size=32, batch_size=128):
+        self.model = model
+        self.device = device
+        self.shape = (num_channels, image_size, image_size)
+        self.batch_size = batch_size
+        # Start with random images in [-1, 1]
+        self.examples = [torch.rand((1, *self.shape), device=device) * 2 - 1 for _ in range(batch_size)]
+
+    def sample_new_exmps(self, steps, step_size, noise):
+        # About 5% brand-new random images, the rest continued from the buffer
+        n_new = np.random.binomial(self.batch_size, 0.05)
+        new_rand_imgs = torch.rand((n_new, *self.shape), device=self.device) * 2 - 1
+        old_imgs = torch.cat(random.choices(self.examples, k=self.batch_size - n_new), dim=0)
+        inp_imgs = torch.cat([new_rand_imgs, old_imgs], dim=0)
+
+        # Run Langevin dynamics to lower their energy
+        new_imgs = langevin_sampling(self.model, inp_imgs, steps, step_size, noise)
+
+        # Add the new images to the front of the buffer (keep at most 8192)
+        self.examples = list(torch.split(new_imgs, 1, dim=0)) + self.examples
+        self.examples = self.examples[:8192]
+        return new_imgs
+
+
+def train_ebm(model, data_loader, optimizer, device='cpu', epochs=10, alpha=0.1, steps=60, step_size=10, noise=0.005):
+    # Training loop from Module 8 Practical 1 (EBM.train_step)
+    model = model.to(device)
+    buffer = Buffer(model, device)
+
+    for epoch in range(epochs):
+        totals = {"loss": 0.0, "cdiv": 0.0, "real": 0.0, "fake": 0.0}
+        loader_with_progress = tqdm(data_loader, ncols=120, desc=f'Epoch {epoch+1}/{epochs}')
+        for real_imgs, _ in loader_with_progress:
+            real_imgs = real_imgs.to(device)
+            real_imgs = (real_imgs + torch.randn_like(real_imgs) * noise).clamp(-1.0, 1.0)
+
+            # Negative phase: fake images from Langevin sampling
+            fake_imgs = buffer.sample_new_exmps(steps=steps, step_size=step_size, noise=noise)
+
+            # Energy of real and fake images in one pass
+            inp_imgs = torch.cat([real_imgs, fake_imgs], dim=0).detach()
+            out_scores = model(inp_imgs)
+            real_out, fake_out = torch.split(out_scores, [real_imgs.size(0), fake_imgs.size(0)], dim=0)
+
+            # Contrastive divergence: lower energy on real, raise it on fake (+ regularization)
+            cdiv_loss = real_out.mean() - fake_out.mean()
+            reg_loss = alpha * (real_out.pow(2).mean() + fake_out.pow(2).mean())
+            loss = cdiv_loss + reg_loss
+
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
+            optimizer.step()
+
+            totals["loss"] += loss.item()
+            totals["cdiv"] += cdiv_loss.item()
+            totals["real"] += real_out.mean().item()
+            totals["fake"] += fake_out.mean().item()
+            loader_with_progress.set_postfix(cdiv=f'{cdiv_loss.item():.4f}')
+
+        n = len(data_loader)
+        print(f"Epoch {epoch+1}: " + ", ".join(f"{k}={v / n:.4f}" for k, v in totals.items()))
+
+    print("Finished Training")
+    return model
